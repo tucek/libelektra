@@ -5,6 +5,7 @@ RUN apt-get update && apt-get -y install \
         automake \
         autotools-dev \
         build-essential \
+        bison \
         clang \
         cmake \
         curl \
@@ -14,6 +15,7 @@ RUN apt-get update && apt-get -y install \
         dh-lua \
         discount \
         doxygen \
+        flex \
         git \
         git-buildpackage \
         graphviz \
@@ -22,7 +24,6 @@ RUN apt-get update && apt-get -y install \
         libdbus-1-dev \
         libgit2-dev \
         libgpgme-dev \
-        libgtest-dev \
         liblua5.2-dev \
         libmarkdown2-dev \
         libssl-dev \

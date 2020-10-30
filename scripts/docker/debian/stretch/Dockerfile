@@ -27,7 +27,6 @@ RUN apt-get update \
         libyajl-dev \
         git \
         libgit2-dev \
-        libgtest-dev \
         libboost-all-dev \
         libssl-dev \
         libdbus-1-dev \
@@ -70,6 +69,7 @@ RUN apt-get update \
         dnsutils \
         virtualenv \
         bison \
+        flex \
         uuid-dev \
         ninja-build \
     && rm -rf /var/lib/apt/lists/*
@@ -172,4 +172,3 @@ RUN virtualenv "${COVERALLS_VIRTUALENV_PATH}" \
     && pip install cpp-coveralls \
     && deactivate
 ENV PATH="${PATH}:${COVERALLS_VIRTUALENV_PATH}/bin"
-

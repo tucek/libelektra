@@ -5,7 +5,7 @@ set (CMAKE_USER_MAKE_RULES_OVERRIDE "${CMAKE_SOURCE_DIR}/scripts/cmake/Platform.
 
 set (KDB_VERSION_MAJOR 0)
 set (KDB_VERSION_MINOR 9)
-set (KDB_VERSION_PATCH 2)
+set (KDB_VERSION_PATCH 3)
 set (KDB_VERSION "${KDB_VERSION_MAJOR}.${KDB_VERSION_MINOR}.${KDB_VERSION_PATCH}")
 
 set (ELEKTRA_DESCRIPTION
@@ -33,6 +33,9 @@ set (CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
 
 # additional modules for loading libraries
 set (CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/scripts/cmake/Modules/")
+
+file (REMOVE "${CMAKE_BINARY_DIR}/extra_install_manifest.txt")
+file (REMOVE "${CMAKE_BINARY_DIR}/external-links.txt")
 
 # needed by ifs below
 include (scripts/cmake/ElektraCache.cmake)

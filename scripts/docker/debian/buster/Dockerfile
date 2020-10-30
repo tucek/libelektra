@@ -10,6 +10,8 @@ RUN apt-get update \
         automake \
         autotools-dev \
         bison \
+        flex \
+        libc6-dbg \
         build-essential \
         cmake \
         curl \
@@ -26,6 +28,7 @@ RUN apt-get update \
         git \
         git-buildpackage \
         gobject-introspection \
+        ghostscript \
         graphviz \
         icheck \
         lcov \
@@ -38,7 +41,6 @@ RUN apt-get update \
         libgit2-dev \
         libglib2.0-dev \
         libgpgme-dev \
-        libgtest-dev \
         liblua5.3-dev \
         libmarkdown2-dev \
         libpcre++-dev \

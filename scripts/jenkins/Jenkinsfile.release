@@ -1,0 +1,475 @@
+#!/usr/bin/env groovy
+
+// Imports
+import java.text.SimpleDateFormat
+
+// Buildjob properties
+properties([
+  buildDiscarder(
+    logRotator(
+      artifactDaysToKeepStr: '31',
+      artifactNumToKeepStr: '10'
+    )
+  )
+])
+
+// Globals
+DOCKER_NODE_LABEL = 'docker'
+REGISTRY = 'hub.libelektra.org'
+
+// Define DOCKER_OPTS enum which is used in withDockerEnv
+enum DOCKER_OPTS {
+  MOUNT_MIRROR,       // Mount the git repository mirror into the container
+  PTRACE              // Allow ptraces in the container
+  public DOCKER_OPTS()  {} // WORKAROUND see TEST
+}
+
+NOW = new Date()
+DOCKER_IMAGES = [:]  // Containers docker image descriptions, populated during
+                     // dockerInit()
+
+RELEASE_VERSION = '' // release version, set during release build and used
+                     // by the documentation stage
+
+
+
+// Stages
+stage("Init docker images") {
+  dockerInit()
+}
+
+stage("Pull docker images") {
+  parallel generateDockerPullStages()
+}
+
+maybeStage("Build docker images", DOCKER_IMAGES.any {img -> !img.value.exists}) {
+  lock('docker-images') {
+        parallel generateDockerBuildStages()
+    }
+}
+
+stage("Release") {
+    milestone label: "Release"
+    parallel generateReleaseStages()
+}
+
+stage("Build Documentation") {
+  milestone label: "Documentation"
+  parallel buildDoc()
+}
+
+/**************/
+/* Generators */
+/**************/
+
+/* Populate DOCKER_IMAGES with data
+ *
+ * For this we need a checkout of the scm to generate the hash for the
+ * Dockerfiles which indicates if a rebuild of the images is needed
+ */
+def dockerInit() {
+  node("master") {
+    echo "Processing DOCKER_IMAGES"
+    checkout scm
+
+    DOCKER_IMAGES.buster = createDockerImageDesc(
+      "debian-buster", this.&idTesting,
+      "./scripts/docker/debian/buster",
+      "./scripts/docker/debian/buster/Dockerfile"
+    ) 
+
+    DOCKER_IMAGES.focal = createDockerImageDesc( 
+      "ubuntu-focal", this.&idTesting,
+      "./scripts/docker/ubuntu/focal",
+      "./scripts/docker/ubuntu/focal/Dockerfile"
+    )
+
+    /* Build Elektra's documentation with this image.
+     * Also contains latex for pdf creation.
+     */
+    DOCKER_IMAGES.buster_doc = createDockerImageDesc(
+      "debian-buster-doc", this.&idTesting,
+      "./scripts/docker/debian/buster",
+      "./scripts/docker/debian/buster/doc.Dockerfile"
+    )
+
+  }
+}
+
+/** Release stage 
+ *
+ * Imports the gpg keys and runs the release script.
+ * All relevant artifacts (build and test infos, packages, etc) are archived
+ *
+ * testName: used to identify the release and name the stage
+ * image: which docker image should be used
+ */
+def buildRelease(testName, image) {
+  return [(testName): {
+    stage(testName) {
+      withDockerEnv(image, [DOCKER_OPTS.MOUNT_MIRROR]) {
+        withCredentials([file(credentialsId: 'jenkins-key', variable: 'KEY'),
+                         file(credentialsId: 'jenkins-secret-key', variable: 'SKEY')]) {
+          sh "gpg --import $KEY"
+          sh "gpg --import $SKEY"
+          withEnv(["DEBSIGN_PROGRAM=gpg",
+                   "DEBFULLNAME=Jenkins (User for Elektra automated build system)",
+                   "DEBEMAIL=autobuilder@libelektra.org"]) {
+            sh "rm -R ./*"
+                
+            sh "git config --global user.name jenkins-release"
+            sh "git config --global user.email jenkins@libelektra.org"
+            
+            dir('libelektra') {
+              deleteDir()
+              sh "git clone https://github.com/ElektraInitiative/libelektra.git ."
+            }
+            dir('ftp') {
+              deleteDir()
+              sh "git clone https://github.com/ElektraInitiative/ftp.git ."
+            }
+
+            sh "sh libelektra/scripts/release/release.sh"
+            sh "mv release.tar.gz ${testName}-release.tar.gz"
+
+            archive(["${testName}-release.tar.gz"])
+
+            dir('libelektra') {
+              sh "git bundle create libelektra.bundle --all"
+              archive(["libelektra.bundle"])
+            }
+
+            script {
+              RELEASE_VERSION = sh(script: 'sh libelektra/scripts/release/get-installed-version.sh', returnStdout: true).trim()
+            }
+          } 
+        }
+      }
+    }
+  }]
+}
+
+/* Generate release stages for release automation
+ */
+def generateReleaseStages() {
+  def tasks = [:]
+
+  tasks << buildRelease(
+    "debian-buster-full",
+    DOCKER_IMAGES.buster
+  )
+
+  tasks << buildRelease(
+    "ubuntu-focal",
+    DOCKER_IMAGES.focal
+  )
+  
+  return tasks
+}
+
+/* Stage building and uploading the documentation */
+def buildDoc() {
+  def stageName = "doc"
+  cmakeFlags = [
+    'BUILD_PDF': 'ON',
+    'BUILD_FULL': 'OFF',
+    'BUILD_SHARED': 'OFF',
+    'BUILD_STATIC': 'OFF',
+    'BUILD_TESTING': 'OFF'
+  ]
+  return [(stageName): {
+    stage(stageName) {
+      withDockerEnv(DOCKER_IMAGES.buster_doc) {
+        sh "git config --global user.name jenkins-release"
+        sh "git config --global user.email jenkins@libelektra.org"
+
+        dir('build') {
+          deleteDir()
+          cmake(env.WORKSPACE, cmakeFlags)
+          sh "make html man"
+        }
+
+        dir('doc') {
+          deleteDir()
+          sh "git clone https://github.com/ElektraInitiative/doc.git ."
+        }
+
+        dir('doc/api') {
+          sh "mkdir ${RELEASE_VERSION}"
+          sh "cp -a ${WORKSPACE}/build/doc/html ${WORKSPACE}/build/doc/latex ${WORKSPACE}/build/doc/man ${RELEASE_VERSION}/"
+          sh "rm current"
+          sh "ln -s ${RELEASE_VERSION} current"
+          sh "git add current ${RELEASE_VERSION}"
+        }
+
+        dir('doc') {
+          sh "git commit -a -m '${RELEASE_VERSION} Release'"
+          sh "git bundle create docu.bundle --all"
+          archive(["docu.bundle"])
+        }
+
+        warnings parserConfigurations: [
+          [parserName: 'Doxygen', pattern: 'build/doc/doxygen.log']
+        ]
+        
+        deleteDir()
+      }
+    }
+  }]
+}
+
+/* Generate Stages to pull all docker images */
+def generateDockerPullStages() {
+  def tasks = [:]
+  DOCKER_IMAGES.each { key, image ->
+    if(image.autobuild) {
+      tasks << pullImageStage(image)
+    }
+  }
+  return tasks
+}
+
+def generateDockerBuildStages() {
+  def tasks = [:]
+  DOCKER_IMAGES.each { key, image ->
+    if(image.autobuild && !image.exists) {
+      tasks << buildImageStage(image)
+    }
+  }
+  return tasks
+}
+
+/* Returns a stage that tries to pull an image
+ *
+ * Also sets IMAGES_TO_BUILD to true if an image can not be found
+ * to indicated that rebuilds are needed
+ * @param image Map identifying which image to pull
+ */
+def pullImageStage(image) {
+  def taskname = "pull/${image.id}/"
+  return [(taskname): {
+    stage(taskname) {
+      node(DOCKER_NODE_LABEL) {
+        echo "Starting ${env.STAGE_NAME} on ${env.NODE_NAME}"
+        docker.withRegistry("https://${REGISTRY}",
+                            'docker-hub-elektra-jenkins') {
+          try {
+            docker.image(image.id).pull()
+            echo "Found existing image"
+            image.exists = true
+          } catch(e) {
+            echo "Detected changes"
+            image.exists = false
+          }
+        }
+      }
+    }
+  }]
+}
+
+/* Returns a map with a closure that builds image
+ *
+ * @param image Image that needs to be build
+ */
+def buildImageStage(image) {
+  def taskname = "build/${image.id}/"
+  return [(taskname): {
+    stage(taskname) {
+      node(DOCKER_NODE_LABEL) {
+        echo "Starting ${env.STAGE_NAME} on ${env.NODE_NAME}"
+        docker.withRegistry("https://${REGISTRY}",
+                          'docker-hub-elektra-jenkins') {
+          checkout scm
+          def uid = getUid()
+          def gid = getGid()
+          def cpus = cpuCount()
+          def i = docker.build(
+            image.id,"""\
+--pull \
+--build-arg JENKINS_GROUPID=${gid} \
+--build-arg JENKINS_USERID=${uid} \
+--build-arg PARALLEL=${cpus} \
+--build-arg BASE_IMG=${DOCKER_IMAGES.buster.id} \
+-f ${image.file} ${image.context}"""
+          )
+          i.push()
+        }
+      }
+    }
+  }]
+}
+
+/********************/
+/* Helper functions */
+/********************/
+
+/* Run the passed closure in a docker environment
+ *
+ * Automatically takes care of docker registry authentication,
+ * selecting a docker capable node,
+ * checkout of scm and setting of useful Environment variables
+ * @param image Docker image that should be used
+ * @param opts List of DOCKER_OPTS that should be passed to docker
+ * @param cl A closure that should be run inside the docker image
+ */
+def withDockerEnv(image, opts=[], cl) {
+  node(DOCKER_NODE_LABEL) {
+    def dockerArgs = ""
+    if (opts.contains(DOCKER_OPTS.MOUNT_MIRROR)) {
+      dockerArgs += "-v ${env.HOME}/git_mirrors:/home/jenkins/git_mirrors "
+    }
+    if (opts.contains(DOCKER_OPTS.PTRACE)) {
+      dockerArgs += "--cap-add SYS_PTRACE "
+    }
+    docker.withRegistry("https://${REGISTRY}",
+                        'docker-hub-elektra-jenkins') {
+      timeout(activity: true, time: 40, unit: 'MINUTES') {
+        def cpu_count = cpuCount()
+        withEnv(["MAKEFLAGS='-j${cpu_count+2} -l${cpu_count*2}'",
+                 "CTEST_PARALLEL_LEVEL='${cpu_count+2}'",
+                 "XDG_CONFIG_HOME=${WORKSPACE}/xdg/user",
+                 "XDG_CONFIG_DIRS=${WORKSPACE}/xdg/system"]) {
+          echo "Starting ${STAGE_NAME} on ${NODE_NAME} using ${image.id}"
+          checkout scm
+          docker.image(image.id)
+                .inside(dockerArgs) { cl() }
+        }
+      }
+    }
+  }
+}
+
+/* Create a new Docker Image description
+ *
+ * @param name Name of the image, will be extended with registry, a common
+ *             prefix and a tag
+ * @param idFun Closure describing how the image id should be formatted
+ *                      (see idTesting() / idWebsite())
+ * @param context Build context for the docker build (base directory that will
+ *                be sent to the docker agent). Relative to the current working
+ *                directory.
+ * @param file Path to Dockerfile relative to the current working directory.
+ * @param autobuild If it should be automatically build at the start of the
+ *                  Jenkins run. If false it can be build manually
+ *                  (see buildImageStage()).
+ */
+def createDockerImageDesc(name, idFun, context, file, autobuild=true) {
+  def prefix = 'build-elektra'
+  def fullName = "${REGISTRY}/${prefix}-${name}"
+  def map = [
+    name: fullName,
+    context: context,
+    file: file,
+    autobuild: autobuild,
+    exists: false
+  ]
+  return idFun(map)
+}
+
+/* Run cmake
+ * @param directory Basedir for cmake
+ * @param argsMap Map of arguments for cmake
+ */
+def cmake(String directory, Map argsMap) {
+  def argsStr = ""
+  argsMap.each { key, value ->
+    argsStr += "-D$key=\"$value\" "
+  }
+  sh("cmake $argsStr $directory")
+}
+
+/* Build image ID of docker images used for tests
+ *
+ * We use identifiers in the form of name:yyyyMM-hash
+ * The hash is build from reading the Dockerfile. Hence it needs to be
+ * checked out before it can be calculated.
+ * @param imageMap Map identifying an docker image (see DOCKER_IMAGES)
+ */
+def idTesting(imageMap) {
+  def cs = checksum(imageMap.file)
+  def dateString = dateFormatter(NOW)
+  imageMap.id = "${imageMap.name}:${dateString}-${cs}"
+  return imageMap
+}
+
+
+/* Format the date input
+ * @param date Date to format
+ */
+def dateFormatter(date) {
+  df = new SimpleDateFormat("yyyyMM")
+  return df.format(date)
+}
+
+/* Generate the checksum of a file
+ * @param file File to generate a checksum for
+ */
+def checksum(file) {
+  // Used to identify if a Dockerfile changed
+  // TODO expand to use more than one file if Dockerfile ever depends on
+  //      external files
+  return sh(returnStdout: true,
+            script: "cat $file | sha256sum | dd bs=1 count=64 status=none")
+         .trim()
+}
+
+/* Generate a Stage
+ *
+ * If `expression` evaluates to TRUE, a stage(`name`) with `body` is run
+ * @param name Name of the stage
+ * @param expression If True, run body
+ * @param body Closure representing stage body
+ */
+def maybeStage(String name, boolean expression, Closure body) {
+  if(expression) {
+    stage(name, body)
+  } else {
+    stage(name) {
+      echo "Stage skipped: ${name}"
+    }
+  }
+}
+
+/* Get cpu count
+ */
+def cpuCount() {
+  return sh(returnStdout: true,
+            script: 'grep -c ^processor /proc/cpuinfo').trim() as Integer
+}
+
+/* Archives files located in paths
+ *
+ * Automatically prefixes with the current STAGE_NAME to identify where the
+ * file was created.
+ * @param paths List of paths to be archived
+ */
+def archive(paths) {
+  echo "Start archivation"
+  if (paths) {
+    def prefix = "artifacts/"
+    def dest = "${prefix}${env.STAGE_NAME}/"
+    sh "mkdir -p ${dest}"
+    paths.each { path ->
+        sh "cp -v ${path} ${dest} || true"
+    }
+    archiveArtifacts artifacts: "${prefix}**",
+                     fingerprint: true,
+                     allowEmptyArchive: true
+  } else {
+    echo "No Artifacts to archive"
+  }
+  echo "Finish archivation"
+}
+
+/* Get the current users uid
+ */
+def getUid() {
+  return sh(returnStdout: true, script: 'id -u').trim()
+}
+
+
+/* Get the current users gid
+ */
+def getGid() {
+  return sh(returnStdout: true, script: 'id -g').trim()
+}

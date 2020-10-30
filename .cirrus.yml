@@ -3,6 +3,7 @@ env:
 
 container:
   memory: 12
+  cpu: 4
 
 # We store common commands here, so we can reference them in the build jobs below.
 commands:
@@ -28,7 +29,7 @@ bsd_task:
 
     - name: 😈 FreeBSD 11
       freebsd_instance:
-        image_family: freebsd-11-3-snap
+        image_family: freebsd-11-4
 
     - name: 😈 FreeBSD 12
       freebsd_instance:
@@ -45,6 +46,7 @@ bsd_task:
       pkg install -y
       bison
       cmake
+      flex
       git
       libgit2
       ninja
@@ -75,6 +77,7 @@ bsd_task:
 mac_task:
   env:
     INSTALL_DIR: install
+    HOMEBREW_NO_INSTALL_CLEANUP: 1
 
   matrix:
 
@@ -114,9 +117,10 @@ mac_task:
         PLUGINS: ALL;-curlget # The curlget tests fail: https://github.com/ElektraInitiative/libelektra/issues/3382
 
   install_script:
-    - > # Install Homebrew casks
-      brew cask install java oclint
     - | # Install Homebrew formulas
+      brew install openjdk
+      brew tap oclint/formulae
+      brew install oclint
       brew install antlr
       brew install antlr4-cpp-runtime
       brew install augeas
@@ -125,6 +129,7 @@ mac_task:
       brew install dbus
       brew install discount
       brew install doxygen
+      brew install flex
       brew install glib
       brew install go
       brew install gpgme
@@ -156,12 +161,13 @@ mac_task:
       brew update # Work around for [Homebrew Services issue 206](https://github.com/Homebrew/homebrew-services/issues/206)
       brew services start dbus
     - | # Install Python
-      brew install python || brew upgrade python
+      brew install python@3.8 || brew upgrade python@3.8
+      export PATH="/usr/local/opt/python@3.8/bin:$PATH"
     - | # Install Python packages
       pip3 install cmake-format[yaml]==0.6.3
     - | # Install Ruby (We use the Homebrew version of Ruby to install gems, since compiling `ronn` fails with the macOs version of Ruby.)
-      brew install ruby@2.6
-      export PATH="/usr/local/opt/ruby@2.6/bin:/usr/local/lib/ruby/gems/2.6.0/bin:$PATH"
+      brew install ruby@2.7
+      export PATH="/usr/local/opt/ruby@2.7/bin:/usr/local/lib/ruby/gems/2.7.0/bin:$PATH"
     - | # Install Ruby gems
       sudo gem install ronn test-unit --no-document
     - | # Install JavaScript packages
@@ -294,7 +300,7 @@ docu_task:
       set --
       -DBUILD_PDF=ON
       -DPLUGINS='dump;list;resolver_fm_hpu_b;spec;sync;yajl'
-      -DTOOLS='ALL;web;website-frontend;website-backend'
+      -DTOOLS='ALL;web;website'
     - *generate
     - *build
 
