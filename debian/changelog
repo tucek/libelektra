@@ -1,3 +1,9 @@
+elektra (0.9.3-1) UNRELEASED; urgency=medium
+
+  * New upstream version.
+
+ -- Jenkins (User for Elektra automated build system) <autobuilder@libelektra.org>  Fri, 30 Oct 2020 20:07:21 +0000
+
 elektra (0.9.2-1) unstable; urgency=medium
 
   * New upstream version.
