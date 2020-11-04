@@ -7,7 +7,6 @@ usr/lib/*/elektra4/libelektra-directoryvalue.so
 usr/lib/*/elektra4/libelektra-dump.so*
 usr/lib/*/elektra4/libelektra-glob.so*
 usr/lib/*/elektra4/libelektra-hosts.so*
-usr/lib/*/elektra4/libelektra-ini.so*
 usr/lib/*/elektra4/libelektra-internalnotification.so
 usr/lib/*/elektra4/libelektra-kconfig.so*
 usr/lib/*/elektra4/libelektra-line.so*
@@ -18,7 +17,6 @@ usr/lib/*/elektra4/libelektra-multifile.so*
 usr/lib/*/elektra4/libelektra-network.so*
 usr/lib/*/elektra4/libelektra-ni.so*
 usr/lib/*/elektra4/libelektra-noresolver.so*
-usr/lib/*/elektra4/libelektra-null.so*
 usr/lib/*/elektra4/libelektra-quickdump.so*
 usr/lib/*/elektra4/libelektra-rename.so*
 usr/lib/*/elektra4/libelektra-resolver_fm_hpu_b.so*

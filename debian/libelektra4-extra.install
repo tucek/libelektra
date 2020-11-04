@@ -31,7 +31,6 @@ usr/lib/*/elektra4/libelektra-resolver_fm_xhp_x.so*
 usr/lib/*/elektra4/libelektra-resolver_fm_xp_x.so*
 usr/lib/*/elektra4/libelektra-rgbcolor.so
 usr/lib/*/elektra4/libelektra-syslog.so*
-usr/lib/*/elektra4/libelektra-tcl.so*
 usr/lib/*/elektra4/libelektra-timeofday.so*
 usr/lib/*/elektra4/libelektra-tracer.so*
 usr/lib/*/elektra4/libelektra-uname.so*
