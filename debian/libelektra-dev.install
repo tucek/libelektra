@@ -30,7 +30,6 @@ usr/include/elektra/kdbplugin.h
 usr/include/elektra/kdbplugin.hpp
 usr/include/elektra/kdbpluginprocess.h
 usr/include/elektra/kdbprivate.h
-usr/include/elektra/kdbproposal.h
 usr/include/elektra/kdbthread.hpp
 usr/include/elektra/kdbtimer.hpp
 usr/include/elektra/kdbtypes.h
