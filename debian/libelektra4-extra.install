@@ -9,7 +9,6 @@ usr/lib/*/elektra4/libelektra-filecheck.so*
 usr/lib/*/elektra4/libelektra-fstab.so*
 usr/lib/*/elektra4/libelektra-hexcode.so*
 usr/lib/*/elektra4/libelektra-hexnumber.so
-usr/lib/*/elektra4/libelektra-hidden.so*
 usr/lib/*/elektra4/libelektra-iconv.so*
 usr/lib/*/elektra4/libelektra-keytometa.so*
 usr/lib/*/elektra4/libelektra-lineendings.so*
